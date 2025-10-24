@@ -13,8 +13,8 @@ export enum UpdateStatus {
 
 // 远程版本检查URL配置
 const VERSION_CHECK_URLS = [
-  'https://ghfast.top/raw.githubusercontent.com/senshinya/MoonTV/main/VERSION.txt',
-  'https://raw.githubusercontent.com/senshinya/MoonTV/main/VERSION.txt',
+  'https://raw.githubusercontent.com/iphoneten/CNTV/refs/heads/main/VERSION.txt',
+  'https://raw.githubusercontent.com/iphoneten/CNTV/refs/heads/main/VERSION.txt',
 ];
 
 /**

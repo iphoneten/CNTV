@@ -6,7 +6,7 @@ import { AlertCircle, CheckCircle } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 
-import { checkForUpdates, CURRENT_VERSION, UpdateStatus } from '@/lib/version';
+import { CURRENT_VERSION, UpdateStatus } from '@/lib/version';
 
 import { useSite } from '@/components/SiteProvider';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -19,8 +19,8 @@ function VersionDisplay() {
   useEffect(() => {
     const checkUpdate = async () => {
       try {
-        const status = await checkForUpdates();
-        setUpdateStatus(status);
+        // const status = await checkForUpdates();
+        // setUpdateStatus(status);
       } catch (_) {
         // do nothing
       } finally {
@@ -41,13 +41,12 @@ function VersionDisplay() {
       <span className='font-mono'>v{CURRENT_VERSION}</span>
       {!isChecking && updateStatus !== UpdateStatus.FETCH_FAILED && (
         <div
-          className={`flex items-center gap-1.5 ${
-            updateStatus === UpdateStatus.HAS_UPDATE
+          className={`flex items-center gap-1.5 ${updateStatus === UpdateStatus.HAS_UPDATE
               ? 'text-yellow-600 dark:text-yellow-400'
               : updateStatus === UpdateStatus.NO_UPDATE
-              ? 'text-green-600 dark:text-green-400'
-              : ''
-          }`}
+                ? 'text-green-600 dark:text-green-400'
+                : ''
+            }`}
         >
           {updateStatus === UpdateStatus.HAS_UPDATE && (
             <>
@@ -231,7 +230,7 @@ function LoginPageClient() {
       </div>
 
       {/* 版本信息显示 */}
-{/*       <VersionDisplay /> */}
+      {/*       <VersionDisplay /> */}
     </div>
   );
 }
