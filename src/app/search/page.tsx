@@ -337,7 +337,6 @@ function SearchPageClient() {
                         year={item.year}
                         from='search'
                         type={item.episodes.length > 1 ? 'tv' : 'movie'}
-                        vodType={item.vod_type}
                       />
                     </div>
                   ))}
