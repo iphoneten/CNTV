@@ -8,6 +8,8 @@ export const runtime = 'edge';
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
+  const type = searchParams.get('type');
+  console.log('search called: ', query);
 
   if (!query) {
     const cacheTime = await getCacheTime();
@@ -23,9 +25,13 @@ export async function GET(request: Request) {
     );
   }
 
-  const apiSites = await getAvailableApiSites();
+  let apiSites = await getAvailableApiSites();
+  if (type === 'yellow') {
+    apiSites = apiSites.filter((site) => site.name.includes('AV'));
+  } else {
+    apiSites = apiSites.filter((site) => !site.name.includes('AV'));
+  }
   const searchPromises = apiSites.map((site) => searchFromApi(site, query));
-
   try {
     const results = await Promise.all(searchPromises);
     const flattenedResults = results.flat();
