@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /* eslint-disable */
 // 根据 SITE_NAME 动态生成 manifest.json
 
@@ -11,7 +12,7 @@ const publicDir = path.join(projectRoot, 'public');
 const manifestPath = path.join(publicDir, 'manifest.json');
 
 // 从环境变量获取站点名称
-const siteName = process.env.SITE_NAME || 'MoonTV';
+const siteName = process.env.SITE_NAME || 'CCTV';
 
 // manifest.json 模板
 const manifestTemplate = {
@@ -24,8 +25,7 @@ const manifestTemplate = {
   "background_color": "#000000",
   "apple-mobile-web-app-capable": "yes",
   "apple-mobile-web-app-status-bar-style": "black",
-  "icons": [
-    {
+  "icons": [{
       "src": "/icons/icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png"
@@ -51,7 +51,9 @@ const manifestTemplate = {
 try {
   // 确保 public 目录存在
   if (!fs.existsSync(publicDir)) {
-    fs.mkdirSync(publicDir, { recursive: true });
+    fs.mkdirSync(publicDir, {
+      recursive: true
+    });
   }
 
   // 写入 manifest.json
