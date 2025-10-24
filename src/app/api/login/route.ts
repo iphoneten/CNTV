@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
         false
       ); // 数据库模式不包含 password
       const expires = new Date();
-      expires.setDate(expires.getDate() + 7); // 7天过期
+      expires.setDate(expires.getDate() + 999); // 7天过期
 
       response.cookies.set('auth', cookieValue, {
         path: '/',

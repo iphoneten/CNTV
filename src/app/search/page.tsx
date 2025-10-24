@@ -205,7 +205,6 @@ function SearchPageClient() {
     e.preventDefault();
     const trimmed = searchQuery.trim().replace(/\s+/g, ' ');
     if (!trimmed) return;
-
     // 回显搜索框
     setSearchQuery(trimmed);
     setIsLoading(true);
@@ -239,33 +238,30 @@ function SearchPageClient() {
 
         {/* 搜索框和类型选择 */}
         <div className='mb-8 overflow-visible' style={{ paddingTop: 50 }}>
-          <form onSubmit={handleSearch} className='max-w-2xl mx-auto'>
-            <div className='flex items-center gap-2'>
-              {/* 搜索输入框 */}
-              <div className='relative flex-1'>
-                <Search className='absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 dark:text-gray-500' />
-                <input
-                  id='searchInput'
-                  type='text'
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder='搜索电影、电视剧...'
-                  className='w-full h-12 rounded-lg bg-gray-50/80 py-3 pl-10 pr-4 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-400 focus:bg-white border border-gray-200/50 shadow-sm dark:bg-gray-800 dark:text-gray-300 dark:placeholder-gray-500 dark:focus:bg-gray-700 dark:border-gray-700'
-                />
-              </div>
-
-              {/* 搜索类型下拉框（右侧同一行） */}
-              <select
-                value={searchType}
-                onChange={(e) => setSearchType(e.target.value as SearchType)}
-                className='h-12 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-300 sm:w-32'
-              >
-                <option value='all'>电视剧</option>
-                <option value='movie'>电影</option>
-                <option value='yellow'>18+</option>
-              </select>
-            </div>
-          </form>
+          <div className='flex items-center gap-2 max-w-2xl mx-auto'>
+            {/* 搜索输入框 */}
+            <form onSubmit={handleSearch} className='flex-1 relative'>
+              <Search className='absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 dark:text-gray-500' />
+              <input
+                id='searchInput'
+                type='text'
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder='搜索电影、电视剧...'
+                className='w-full h-12 rounded-lg bg-gray-50/80 py-3 pl-10 pr-4 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-400 focus:bg-white border border-gray-200/50 shadow-sm dark:bg-gray-800 dark:text-gray-300 dark:placeholder-gray-500 dark:focus:bg-gray-700 dark:border-gray-700'
+              />
+            </form>
+            {/* 搜索类型下拉框（右侧同一行，form 外部） */}
+            {/* <select
+              value={searchType}
+              onChange={(e) => setSearchType(e.target.value as SearchType)}
+              className='h-12 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-300 sm:w-32'
+            >
+              <option value='all'>电视剧</option>
+              <option value='movie'>电影</option>
+              <option value='yellow'>18+</option>
+            </select> */}
+          </div>
         </div>
 
         {/* 搜索结果或搜索历史 */}
@@ -341,6 +337,7 @@ function SearchPageClient() {
                         year={item.year}
                         from='search'
                         type={item.episodes.length > 1 ? 'tv' : 'movie'}
+                        vodType={item.vod_type}
                       />
                     </div>
                   ))}
