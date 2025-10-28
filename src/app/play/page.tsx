@@ -412,6 +412,7 @@ function PlayPageClient() {
     if (newUrl !== videoUrl) {
       setVideoUrl(newUrl);
     }
+    switchVideoSource(newUrl);
   };
 
   const ensureVideoSource = (video: HTMLVideoElement | null, url: string) => {
@@ -789,6 +790,68 @@ function PlayPageClient() {
     initSkipConfig();
   }, []);
 
+
+  const switchVideoSource = (newUrl: string, newTitle?: string, newPoster?: string) => {
+    const player = artPlayerRef.current;
+    if (!player || !player.video) return;
+
+    // 更新 title 和封面
+    if (newTitle) player.title = newTitle;
+    if (newPoster) player.poster = newPoster;
+
+    const video = player.video as HTMLVideoElement;
+
+    // 如果已经存在 hls，则直接切换 source
+    if (video.hls) {
+      video.hls.loadSource(newUrl);
+      video.hls.attachMedia(video);
+    } else if (Hls) {
+      // 创建新的 Hls 实例
+      const hls = new Hls({
+        debug: false,
+        enableWorker: true,
+        lowLatencyMode: true,
+        maxBufferLength: 30,
+        backBufferLength: 30,
+        maxBufferSize: 60 * 1000 * 1000,
+        loader: blockAdEnabledRef.current ? CustomHlsJsLoader : Hls.DefaultConfig.loader,
+      });
+      hls.loadSource(newUrl);
+      hls.attachMedia(video);
+      video.hls = hls;
+
+      // 错误处理
+      hls.on(Hls.Events.ERROR, function (event, data) {
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              hls.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              hls.recoverMediaError();
+              break;
+            default:
+              hls.destroy();
+              break;
+          }
+        }
+      });
+    } else {
+      // fallback，直接修改 video.src
+      video.src = newUrl;
+    }
+
+    // 恢复播放进度
+    if (resumeTimeRef.current && resumeTimeRef.current > 0) {
+      video.currentTime = resumeTimeRef.current;
+      resumeTimeRef.current = null;
+    }
+
+    video.play().catch(() => {
+      console.warn('视频播放被浏览器阻止，需要用户交互');
+    });
+  };
+
   // 处理换源
   const handleSourceChange = async (
     newSource: string,
@@ -870,6 +933,7 @@ function PlayPageClient() {
       setCurrentId(newId);
       setDetail(newDetail);
       setCurrentEpisodeIndex(targetIndex);
+      switchVideoSource(newDetail.source, newDetail.id, newDetail.poster);
     } catch (err) {
       // 隐藏换源加载状态
       setIsVideoLoading(false);
@@ -1187,38 +1251,13 @@ function PlayPageClient() {
     }
     console.log(videoUrl);
 
-    // 检测是否为WebKit浏览器
+    // 优化版播放器初始化：首次创建实例，后续切源仅切换 HLS source
     const isWebkit =
       typeof window !== 'undefined' &&
       typeof (window as any).webkitConvertPointFromNodeToPage === 'function';
 
-    // 非WebKit浏览器且播放器已存在，使用switch方法切换
-    if (!isWebkit && artPlayerRef.current) {
-      artPlayerRef.current.switch = videoUrl;
-      artPlayerRef.current.title = `${videoTitle} - 第${currentEpisodeIndex + 1
-        }集`;
-      artPlayerRef.current.poster = videoCover;
-      if (artPlayerRef.current?.video) {
-        ensureVideoSource(
-          artPlayerRef.current.video as HTMLVideoElement,
-          videoUrl
-        );
-      }
-      return;
-    }
-
-    // WebKit浏览器或首次创建：销毁之前的播放器实例并创建新的
-    if (artPlayerRef.current) {
-      if (artPlayerRef.current.video && artPlayerRef.current.video.hls) {
-        artPlayerRef.current.video.hls.destroy();
-      }
-      // 销毁播放器实例
-      artPlayerRef.current.destroy();
-      artPlayerRef.current = null;
-    }
-
-    try {
-      // 创建新的播放器实例
+    if (!artPlayerRef.current) {
+      // 首次创建播放器
       Artplayer.PLAYBACK_RATE = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
       Artplayer.USE_RAF = true;
 
@@ -1263,32 +1302,24 @@ function PlayPageClient() {
               console.error('HLS.js 未加载');
               return;
             }
-
             if (video.hls) {
               video.hls.destroy();
             }
             const hls = new Hls({
-              debug: false, // 关闭日志
-              enableWorker: true, // WebWorker 解码，降低主线程压力
-              lowLatencyMode: true, // 开启低延迟 LL-HLS
-
-              /* 缓冲/内存相关 */
-              maxBufferLength: 30, // 前向缓冲最大 30s，过大容易导致高延迟
-              backBufferLength: 30, // 仅保留 30s 已播放内容，避免内存占用
-              maxBufferSize: 60 * 1000 * 1000, // 约 60MB，超出后触发清理
-
-              /* 自定义loader */
+              debug: false,
+              enableWorker: true,
+              lowLatencyMode: true,
+              maxBufferLength: 30,
+              backBufferLength: 30,
+              maxBufferSize: 60 * 1000 * 1000,
               loader: blockAdEnabledRef.current
                 ? CustomHlsJsLoader
                 : Hls.DefaultConfig.loader,
             });
-
             hls.loadSource(url);
             hls.attachMedia(video);
             video.hls = hls;
-
             ensureVideoSource(video, url);
-
             hls.on(Hls.Events.ERROR, function (event: any, data: any) {
               console.error('HLS Error:', event, data);
               if (data.fatal) {
@@ -1424,19 +1455,63 @@ function PlayPageClient() {
         ],
       });
 
+      // ------------------- 播放器高度自适应(竖屏短剧)逻辑 begin -------------------
+      const video = artPlayerRef.current.video as HTMLVideoElement;
+      const container = artRef.current;
+
+      // 自动调整播放器容器高度
+      const updateLayout = () => {
+        if (!video || !container) return;
+        const isPortrait = video.videoHeight > video.videoWidth;
+        const gridContainer = artRef.current?.parentElement?.parentElement; // grid item 的父容器
+        if (isPortrait) {
+          if (!document.fullscreenElement) {
+            container.style.height = '80vh';
+            // 关键：让 grid 容器也撑高
+            if (gridContainer) {
+              gridContainer.style.height = '80vh';
+            }
+          } else {
+            // 全屏时撑满屏幕
+            container.style.height = '100vh';
+            if (gridContainer) {
+              gridContainer.style.height = '100vh';
+            }
+          }
+        } else {
+          container.style.height = '';
+          if (gridContainer) {
+            gridContainer.style.minHeight = ''; // 恢复
+          }
+        }
+      };
+      video.addEventListener('loadedmetadata', updateLayout);
+      window.addEventListener('resize', updateLayout);
+      document.addEventListener('fullscreenchange', updateLayout);
+      // 初始调整
+      updateLayout();
+      // 清理
+      const cleanup = () => {
+        video.removeEventListener('loadedmetadata', updateLayout);
+        window.removeEventListener('resize', updateLayout);
+        document.removeEventListener('fullscreenchange', updateLayout);
+      };
+      // 组件卸载时清理
+      if (artPlayerRef.current && typeof artPlayerRef.current.on === 'function') {
+        artPlayerRef.current.on('destroy', cleanup);
+      }
+      // ------------------- 播放器高度自适应(竖屏短剧)逻辑 end -------------------
+
       // 监听播放器事件
       artPlayerRef.current.on('ready', () => {
         setError(null);
       });
-
       artPlayerRef.current.on('video:volumechange', () => {
         lastVolumeRef.current = artPlayerRef.current.volume;
       });
       artPlayerRef.current.on('video:ratechange', () => {
         lastPlaybackRateRef.current = artPlayerRef.current.playbackRate;
       });
-
-      // 监听视频可播放事件，这时恢复播放进度更可靠
       artPlayerRef.current.on('video:canplay', () => {
         // 若存在需要恢复的播放进度，则跳转
         if (resumeTimeRef.current && resumeTimeRef.current > 0) {
@@ -1453,7 +1528,6 @@ function PlayPageClient() {
           }
         }
         resumeTimeRef.current = null;
-
         setTimeout(() => {
           if (
             Math.abs(artPlayerRef.current.volume - lastVolumeRef.current) > 0.01
@@ -1470,23 +1544,17 @@ function PlayPageClient() {
           }
           artPlayerRef.current.notice.show = '';
         }, 0);
-
-        // 隐藏换源加载状态
         setIsVideoLoading(false);
+        // 重新调整高度，防止切集后未触发
+        updateLayout();
       });
-
-      // 监听视频时间更新事件，实现跳过片头片尾
       artPlayerRef.current.on('video:timeupdate', () => {
         if (!skipConfigRef.current.enable) return;
-
         const currentTime = artPlayerRef.current.currentTime || 0;
         const duration = artPlayerRef.current.duration || 0;
         const now = Date.now();
-
-        // 限制跳过检查频率为1.5秒一次
         if (now - lastSkipCheckRef.current < 1500) return;
         lastSkipCheckRef.current = now;
-
         // 跳过片头
         if (
           skipConfigRef.current.intro_time > 0 &&
@@ -1497,7 +1565,6 @@ function PlayPageClient() {
             skipConfigRef.current.intro_time
           )})`;
         }
-
         // 跳过片尾
         if (
           skipConfigRef.current.outro_time < 0 &&
@@ -1518,15 +1585,12 @@ function PlayPageClient() {
           )})`;
         }
       });
-
       artPlayerRef.current.on('error', (err: any) => {
         console.error('播放器错误:', err);
         if (artPlayerRef.current.currentTime > 0) {
           return;
         }
       });
-
-      // 监听视频播放结束事件，自动播放下一集
       artPlayerRef.current.on('video:ended', () => {
         const d = detailRef.current;
         const idx = currentEpisodeIndexRef.current;
@@ -1536,7 +1600,6 @@ function PlayPageClient() {
           }, 1000);
         }
       });
-
       artPlayerRef.current.on('video:timeupdate', () => {
         const now = Date.now();
         let interval = 5000;
@@ -1551,20 +1614,66 @@ function PlayPageClient() {
           lastSaveTimeRef.current = now;
         }
       });
-
       artPlayerRef.current.on('pause', () => {
         saveCurrentPlayProgress();
       });
-
       if (artPlayerRef.current?.video) {
         ensureVideoSource(
           artPlayerRef.current.video as HTMLVideoElement,
           videoUrl
         );
       }
-    } catch (err) {
-      console.error('创建播放器失败:', err);
-      setError('播放器初始化失败');
+    } else {
+      // 切集/换源时仅切换HLS源，不销毁实例
+      if (artPlayerRef.current.switch) {
+        // Artplayer >= 5.0.0 支持 switchVideo 方法
+        if (typeof artPlayerRef.current.switchVideo === 'function') {
+          artPlayerRef.current.switchVideo({
+            url: videoUrl,
+            title: `${videoTitle} - 第${currentEpisodeIndex + 1}集`,
+            poster: videoCover,
+            type: 'm3u8',
+          });
+        } else {
+          // 兼容旧版本
+          artPlayerRef.current.switch = videoUrl;
+        }
+      } else if (typeof artPlayerRef.current.switchVideo === 'function') {
+        artPlayerRef.current.switchVideo({
+          url: videoUrl,
+          title: `${videoTitle} - 第${currentEpisodeIndex + 1}集`,
+          poster: videoCover,
+          type: 'm3u8',
+        });
+      } else {
+        // 直接更改 video.src
+        if (artPlayerRef.current?.video) {
+          ensureVideoSource(
+            artPlayerRef.current.video as HTMLVideoElement,
+            videoUrl
+          );
+        }
+        artPlayerRef.current.url = videoUrl;
+        artPlayerRef.current.title = `${videoTitle} - 第${currentEpisodeIndex + 1}集`;
+        artPlayerRef.current.poster = videoCover;
+      }
+      // 兼容 WebKit: 切集时速率音量等同步
+      setTimeout(() => {
+        if (
+          Math.abs(artPlayerRef.current.volume - lastVolumeRef.current) > 0.01
+        ) {
+          artPlayerRef.current.volume = lastVolumeRef.current;
+        }
+        if (
+          Math.abs(
+            artPlayerRef.current.playbackRate - lastPlaybackRateRef.current
+          ) > 0.01 &&
+          isWebkit
+        ) {
+          artPlayerRef.current.playbackRate = lastPlaybackRateRef.current;
+        }
+      }, 0);
+      setIsVideoLoading(false);
     }
   }, [Artplayer, Hls, videoUrl, loading, blockAdEnabled]);
 
@@ -1614,25 +1723,25 @@ function PlayPageClient() {
               <div className='flex justify-center space-x-2 mb-4'>
                 <div
                   className={`w-3 h-3 rounded-full transition-all duration-500 ${loadingStage === 'searching' || loadingStage === 'fetching'
-                      ? 'bg-green-500 scale-125'
-                      : loadingStage === 'preferring' ||
-                        loadingStage === 'ready'
-                        ? 'bg-green-500'
-                        : 'bg-gray-300'
+                    ? 'bg-green-500 scale-125'
+                    : loadingStage === 'preferring' ||
+                      loadingStage === 'ready'
+                      ? 'bg-green-500'
+                      : 'bg-gray-300'
                     }`}
                 ></div>
                 <div
                   className={`w-3 h-3 rounded-full transition-all duration-500 ${loadingStage === 'preferring'
-                      ? 'bg-green-500 scale-125'
-                      : loadingStage === 'ready'
-                        ? 'bg-green-500'
-                        : 'bg-gray-300'
+                    ? 'bg-green-500 scale-125'
+                    : loadingStage === 'ready'
+                      ? 'bg-green-500'
+                      : 'bg-gray-300'
                     }`}
                 ></div>
                 <div
                   className={`w-3 h-3 rounded-full transition-all duration-500 ${loadingStage === 'ready'
-                      ? 'bg-green-500 scale-125'
-                      : 'bg-gray-300'
+                    ? 'bg-green-500 scale-125'
+                    : 'bg-gray-300'
                     }`}
                 ></div>
               </div>
@@ -1782,22 +1891,22 @@ function PlayPageClient() {
               {/* 精致的状态指示点 */}
               <div
                 className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full transition-all duration-200 ${isEpisodeSelectorCollapsed
-                    ? 'bg-orange-400 animate-pulse'
-                    : 'bg-green-400'
+                  ? 'bg-orange-400 animate-pulse'
+                  : 'bg-green-400'
                   }`}
               ></div>
             </button>
           </div>
 
           <div
-            className={`grid gap-4 lg:h-[500px] xl:h-[650px] 2xl:h-[750px] transition-all duration-300 ease-in-out ${isEpisodeSelectorCollapsed
-                ? 'grid-cols-1'
-                : 'grid-cols-1 md:grid-cols-4'
+            className={`grid gap-4 transition-all duration-300 ease-in-out ${isEpisodeSelectorCollapsed
+              ? 'grid-cols-1'
+              : 'grid-cols-1 md:grid-cols-4'
               }`}
           >
             {/* 播放器 */}
             <div
-              className={`h-full transition-all duration-300 ease-in-out rounded-xl border border-white/0 dark:border-white/30 ${isEpisodeSelectorCollapsed ? 'col-span-1' : 'md:col-span-3'
+              className={`relative w-full min-h-[300px] lg:min-h-0 lg:h-full transition-all duration-300 ${isEpisodeSelectorCollapsed ? 'col-span-1' : 'md:col-span-3'
                 }`}
             >
               <div className='relative w-full h-[300px] lg:h-full'>
@@ -1849,8 +1958,8 @@ function PlayPageClient() {
             {/* 选集和换源 - 在移动端始终显示，在 lg 及以上可折叠 */}
             <div
               className={`h-[300px] lg:h-full md:overflow-hidden transition-all duration-300 ease-in-out ${isEpisodeSelectorCollapsed
-                  ? 'md:col-span-1 lg:hidden lg:opacity-0 lg:scale-95'
-                  : 'md:col-span-1 lg:opacity-100 lg:scale-100'
+                ? 'md:col-span-1 lg:hidden lg:opacity-0 lg:scale-95'
+                : 'md:col-span-1 lg:opacity-100 lg:scale-100'
                 }`}
             >
               <EpisodeSelector
