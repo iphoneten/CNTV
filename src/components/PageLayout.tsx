@@ -1,3 +1,4 @@
+
 import { BackButton } from './BackButton';
 import MobileBottomNav from './MobileBottomNav';
 import MobileHeader from './MobileHeader';
@@ -52,7 +53,7 @@ const PageLayout = ({ children, activePath = '/' }: PageLayoutProps) => {
 
       {/* 移动端底部导航 */}
       <div className='md:hidden'>
-        <MobileBottomNav activePath={activePath} />
+        {!['/play'].includes(activePath) && (<MobileBottomNav activePath={activePath} />)}
       </div>
     </div>
   );
