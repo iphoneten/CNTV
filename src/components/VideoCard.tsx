@@ -200,7 +200,9 @@ export default function VideoCard({
       router.push(
         `/play?title=${encodeURIComponent(actualTitle.trim())}${actualYear ? `&year=${actualYear}` : ''
         }${actualSearchType ? `&stype=${actualSearchType}` : ''}`
-      );
+        , {
+          scroll: false
+        });
     } else if (actualSource && actualId) {
       router.push(
         `/play?source=${actualSource}&id=${actualId}&title=${encodeURIComponent(
@@ -208,7 +210,9 @@ export default function VideoCard({
         )}${actualYear ? `&year=${actualYear}` : ''}${isAggregate ? '&prefer=true' : ''
         }${actualQuery ? `&stitle=${encodeURIComponent(actualQuery.trim())}` : ''
         }${actualSearchType ? `&stype=${actualSearchType}` : ''}`
-      );
+        , {
+          scroll: false
+        });
     }
   }, [
     from,

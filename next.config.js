@@ -6,14 +6,17 @@ const nextConfig = {
     dirs: ['src'],
   },
 
+  experimental: {
+    navigationCacheLifetime: 300, // 秒，延长缓存
+  },
+
   reactStrictMode: false,
   swcMinify: true,
 
   // Uncoment to add domain whitelist
   images: {
     unoptimized: true,
-    remotePatterns: [
-      {
+    remotePatterns: [{
         protocol: 'https',
         hostname: '**',
       },
@@ -40,8 +43,12 @@ const nextConfig = {
       // Convert all other *.svg imports to React components
       {
         test: /\.svg$/i,
-        issuer: { not: /\.(css|scss|sass)$/ },
-        resourceQuery: { not: /url/ }, // exclude if *.svg?url
+        issuer: {
+          not: /\.(css|scss|sass)$/
+        },
+        resourceQuery: {
+          not: /url/
+        }, // exclude if *.svg?url
         loader: '@svgr/webpack',
         options: {
           dimensions: false,
