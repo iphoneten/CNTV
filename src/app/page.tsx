@@ -214,7 +214,7 @@ function HomeClient() {
 
   return (
     <PageLayout>
-      <div className='px-2 sm:px-10 py-4 sm:py-8 overflow-visible'>
+      <div className='px-2 sm:px-10 pb-4 sm:pb-8 pt-[calc(3rem+env(safe-area-inset-top)+0.75rem)] sm:pt-8 overflow-visible'>
         <div className='max-w-[95%] mx-auto'>
           {sections.length === 0 && !loadingTabs && (
             <section className='mb-8'>
