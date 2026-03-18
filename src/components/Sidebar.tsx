@@ -1,8 +1,6 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 'use client';
 
-import { Clover, Film, Home, Menu, Search, Star, Tv } from 'lucide-react';
+import { Heart, History, Home, Menu, Search } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -124,39 +122,18 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
     isCollapsed,
   };
 
-  const [menuItems, setMenuItems] = useState([
+  const menuItems = [
     {
-      icon: Film,
-      label: '电影',
-      href: '/douban?type=movie',
+      icon: History,
+      label: '记录',
+      href: '/records',
     },
     {
-      icon: Tv,
-      label: '剧集',
-      href: '/douban?type=tv',
+      icon: Heart,
+      label: '收藏',
+      href: '/favorites',
     },
-    {
-      icon: Clover,
-      label: '综艺',
-      href: '/douban?type=show',
-    },
-  ]);
-
-  useEffect(() => {
-    const runtimeConfig = (window as any).RUNTIME_CONFIG;
-    if (runtimeConfig?.CUSTOM_CATEGORIES) {
-      setMenuItems((prevItems) => [
-        ...prevItems,
-        ...runtimeConfig.CUSTOM_CATEGORIES.map((category: any) => ({
-          icon: Star,
-          label: category.name || category.query,
-          href: `/douban?type=${category.type}&tag=${category.query}${
-            category.name ? `&name=${category.name}` : ''
-          }&custom=true`,
-        })),
-      ]);
-    }
-  }, []);
+  ];
 
   return (
     <SidebarContext.Provider value={contextValue}>
@@ -240,20 +217,7 @@ const Sidebar = ({ onToggle, activePath = '/' }: SidebarProps) => {
             <div className='flex-1 overflow-y-auto px-2 pt-4'>
               <div className='space-y-1'>
                 {menuItems.map((item) => {
-                  // 检查当前路径是否匹配这个菜单项
-                  const typeMatch = item.href.match(/type=([^&]+)/)?.[1];
-                  const tagMatch = item.href.match(/tag=([^&]+)/)?.[1];
-
-                  // 解码URL以进行正确的比较
-                  const decodedActive = decodeURIComponent(active);
-                  const decodedItemHref = decodeURIComponent(item.href);
-
-                  const isActive =
-                    decodedActive === decodedItemHref ||
-                    (decodedActive.startsWith('/douban') &&
-                      decodedActive.includes(`type=${typeMatch}`) &&
-                      tagMatch &&
-                      decodedActive.includes(`tag=${tagMatch}`));
+                  const isActive = active === item.href;
                   const Icon = item.icon;
                   return (
                     <Link

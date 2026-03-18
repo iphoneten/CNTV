@@ -15,6 +15,96 @@ interface ApiSearchItem {
   type_name?: string;
 }
 
+function extractEpisodes(playUrl?: string): string[] {
+  let episodes: string[] = [];
+
+  if (!playUrl) {
+    return episodes;
+  }
+
+  const m3u8Regex = /\$(https?:\/\/[^"'\s]+?\.m3u8)/g;
+  const vodPlayUrlArray = playUrl.split('$$$');
+
+  vodPlayUrlArray.forEach((url: string) => {
+    const matches = url.match(m3u8Regex) || [];
+    if (matches.length > episodes.length) {
+      episodes = matches;
+    }
+  });
+
+  return Array.from(new Set(episodes)).map((link: string) => {
+    link = link.substring(1);
+    const parenIndex = link.indexOf('(');
+    return parenIndex > 0 ? link.substring(0, parenIndex) : link;
+  });
+}
+
+function mapApiSearchItem(item: ApiSearchItem, apiSite: ApiSite): SearchResult {
+  return {
+    id: item.vod_id.toString(),
+    title: item.vod_name.trim().replace(/\s+/g, ' '),
+    poster: item.vod_pic,
+    episodes: extractEpisodes(item.vod_play_url),
+    source: apiSite.key,
+    source_name: apiSite.name,
+    class: item.vod_class,
+    year: item.vod_year ? item.vod_year.match(/\d{4}/)?.[0] || '' : 'unknown',
+    desc: cleanHtmlTags(item.vod_content || ''),
+    type_name: item.type_name,
+    douban_id: item.vod_douban_id,
+  };
+}
+
+export async function getLatestFromApi(
+  apiSite: ApiSite,
+  limit = 12,
+  page = 1
+): Promise<{
+  items: SearchResult[];
+  hasMore: boolean;
+}> {
+  try {
+    const apiUrl = `${apiSite.api}?ac=videolist&pg=${page}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const response = await fetch(apiUrl, {
+      headers: API_CONFIG.search.headers,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      return {
+        items: [],
+        hasMore: false,
+      };
+    }
+
+    const data = await response.json();
+    if (!data || !Array.isArray(data.list) || data.list.length === 0) {
+      return {
+        items: [],
+        hasMore: false,
+      };
+    }
+
+    const pageCount = Number(data.pagecount || 0);
+    return {
+      items: data.list
+        .slice(0, limit)
+        .map((item: ApiSearchItem) => mapApiSearchItem(item, apiSite)),
+      hasMore: pageCount > 0 ? page < pageCount : data.list.length >= limit,
+    };
+  } catch (error) {
+    return {
+      items: [],
+      hasMore: false,
+    };
+  }
+}
+
 export async function searchFromApi(
   apiSite: ApiSite,
   query: string
@@ -50,45 +140,10 @@ export async function searchFromApi(
       return [];
     }
     // 处理第一页结果
-    const results = data.list.map((item: ApiSearchItem) => {
-      let episodes: string[] = [];
-
-      // 使用正则表达式从 vod_play_url 提取 m3u8 链接
-      if (item.vod_play_url) {
-        const m3u8Regex = /\$(https?:\/\/[^"'\s]+?\.m3u8)/g;
-        // 先用 $$$ 分割
-        const vod_play_url_array = item.vod_play_url.split('$$$');
-        // 对每个分片做匹配，取匹配到最多的作为结果
-        vod_play_url_array.forEach((url: string) => {
-          const matches = url.match(m3u8Regex) || [];
-          if (matches.length > episodes.length) {
-            episodes = matches;
-          }
-        });
-      }
-
-      episodes = Array.from(new Set(episodes)).map((link: string) => {
-        link = link.substring(1); // 去掉开头的 $
-        const parenIndex = link.indexOf('(');
-        return parenIndex > 0 ? link.substring(0, parenIndex) : link;
-      });
-
-      return {
-        id: item.vod_id.toString(),
-        title: item.vod_name.trim().replace(/\s+/g, ' '),
-        poster: item.vod_pic,
-        episodes,
-        source: apiSite.key,
-        source_name: apiName,
-        class: item.vod_class,
-        year: item.vod_year
-          ? item.vod_year.match(/\d{4}/)?.[0] || ''
-          : 'unknown',
-        desc: cleanHtmlTags(item.vod_content || ''),
-        type_name: item.type_name,
-        douban_id: item.vod_douban_id,
-      };
-    });
+    const results = data.list.map((item: ApiSearchItem) => ({
+      ...mapApiSearchItem(item, apiSite),
+      source_name: apiName,
+    }));
 
     const config = await getConfig();
     const MAX_SEARCH_PAGES: number = config.SiteConfig.SearchDownstreamMaxPage;
@@ -131,37 +186,10 @@ export async function searchFromApi(
             if (!pageData || !pageData.list || !Array.isArray(pageData.list))
               return [];
 
-            return pageData.list.map((item: ApiSearchItem) => {
-              let episodes: string[] = [];
-
-              // 使用正则表达式从 vod_play_url 提取 m3u8 链接
-              if (item.vod_play_url) {
-                const m3u8Regex = /\$(https?:\/\/[^"'\s]+?\.m3u8)/g;
-                episodes = item.vod_play_url.match(m3u8Regex) || [];
-              }
-
-              episodes = Array.from(new Set(episodes)).map((link: string) => {
-                link = link.substring(1); // 去掉开头的 $
-                const parenIndex = link.indexOf('(');
-                return parenIndex > 0 ? link.substring(0, parenIndex) : link;
-              });
-
-              return {
-                id: item.vod_id.toString(),
-                title: item.vod_name.trim().replace(/\s+/g, ' '),
-                poster: item.vod_pic,
-                episodes,
-                source: apiSite.key,
-                source_name: apiName,
-                class: item.vod_class,
-                year: item.vod_year
-                  ? item.vod_year.match(/\d{4}/)?.[0] || ''
-                  : 'unknown',
-                desc: cleanHtmlTags(item.vod_content || ''),
-                type_name: item.type_name,
-                douban_id: item.vod_douban_id,
-              };
-            });
+            return pageData.list.map((item: ApiSearchItem) => ({
+              ...mapApiSearchItem(item, apiSite),
+              source_name: apiName,
+            }));
           } catch (error) {
             return [];
           }

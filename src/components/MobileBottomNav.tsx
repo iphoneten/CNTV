@@ -1,11 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 'use client';
 
-import { Clover, Film, Home, Search, Star, Tv } from 'lucide-react';
+import { Heart, History, Home, Search } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
 
 interface MobileBottomNavProps {
   /**
@@ -20,57 +17,26 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
   // 当前激活路径：优先使用传入的 activePath，否则回退到浏览器地址
   const currentActive = activePath ?? pathname;
 
-  const [navItems, setNavItems] = useState([
+  const navItems = [
     { icon: Home, label: '首页', href: '/' },
     { icon: Search, label: '搜索', href: '/search' },
     {
-      icon: Film,
-      label: '电影',
-      href: '/douban?type=movie',
+      icon: History,
+      label: '记录',
+      href: '/records',
     },
     {
-      icon: Tv,
-      label: '剧集',
-      href: '/douban?type=tv',
+      icon: Heart,
+      label: '收藏',
+      href: '/favorites',
     },
-    {
-      icon: Clover,
-      label: '综艺',
-      href: '/douban?type=show',
-    },
-  ]);
-
-  useEffect(() => {
-    const runtimeConfig = (window as any).RUNTIME_CONFIG;
-    if (runtimeConfig?.CUSTOM_CATEGORIES) {
-      setNavItems((prevItems) => [
-        ...prevItems,
-        ...runtimeConfig.CUSTOM_CATEGORIES.map((category: any) => ({
-          icon: Star,
-          label: category.name || category.query,
-          href: `/douban?type=${category.type}&tag=${category.query}${
-            category.name ? `&name=${category.name}` : ''
-          }&custom=true`,
-        })),
-      ]);
-    }
-  }, []);
+  ];
 
   const isActive = (href: string) => {
-    const typeMatch = href.match(/type=([^&]+)/)?.[1];
-    const tagMatch = href.match(/tag=([^&]+)/)?.[1];
-
-    // 解码URL以进行正确的比较
     const decodedActive = decodeURIComponent(currentActive);
     const decodedItemHref = decodeURIComponent(href);
 
-    return (
-      decodedActive === decodedItemHref ||
-      (decodedActive.startsWith('/douban') &&
-        decodedActive.includes(`type=${typeMatch}`) &&
-        tagMatch &&
-        decodedActive.includes(`tag=${tagMatch}`))
-    );
+    return decodedActive === decodedItemHref;
   };
 
   return (
@@ -90,7 +56,10 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
             <li
               key={item.href}
               className='flex-shrink-0'
-              style={{ width: '20vw', minWidth: '20vw' }}
+              style={{
+                width: `${100 / navItems.length}vw`,
+                minWidth: `${100 / navItems.length}vw`,
+              }}
             >
               <Link
                 href={item.href}
