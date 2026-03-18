@@ -58,8 +58,10 @@ function HomeClient() {
           throw new Error('获取首页推荐失败');
         }
 
-        const data = await response.json();
-        const nextSections = Array.isArray(data.sections) ? data.sections : [];
+        const data: { sections?: unknown } = await response.json();
+        const nextSections: HomeSection[] = Array.isArray(data.sections)
+          ? (data.sections as HomeSection[])
+          : [];
         const nextGroups = Array.from(
           new Set(nextSections.map((section) => section.group))
         );
