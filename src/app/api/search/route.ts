@@ -5,9 +5,18 @@ import { searchFromApi } from '@/lib/downstream';
 
 export const runtime = 'edge';
 
+function parseSiteGroup(name: string): string {
+  const separatorIndex = name.indexOf('-');
+  if (separatorIndex > 0) {
+    return name.slice(0, separatorIndex).trim() || '其他';
+  }
+  return '其他';
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
+  const group = (searchParams.get('group') || '').trim();
 
   if (!query) {
     const cacheTime = await getCacheTime();
@@ -23,7 +32,10 @@ export async function GET(request: Request) {
     );
   }
 
-  const apiSites = await getAvailableApiSites();
+  let apiSites = await getAvailableApiSites();
+  if (group) {
+    apiSites = apiSites.filter((site) => parseSiteGroup(site.name) === group);
+  }
   // if (type === 'yellow') {
   //   apiSites = apiSites.filter((site) => site.name.includes('AV'));
   // } else {

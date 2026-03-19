@@ -101,6 +101,7 @@ function PlayPageClient() {
   // 搜索所需信息
   const [searchTitle] = useState(searchParams.get('stitle') || '');
   const [searchType] = useState(searchParams.get('stype') || '');
+  const [sourceGroup] = useState(searchParams.get('sgroup') || '');
 
   // 是否需要优选
   const [needPrefer, setNeedPrefer] = useState(
@@ -618,8 +619,11 @@ function PlayPageClient() {
     const fetchSourcesData = async (query: string): Promise<SearchResult[]> => {
       // 根据搜索词获取全部源信息
       try {
+        const groupParam = sourceGroup
+          ? `&group=${encodeURIComponent(sourceGroup)}`
+          : '';
         const response = await fetch(
-          `/api/search?q=${encodeURIComponent(query.trim())}`
+          `/api/search?q=${encodeURIComponent(query.trim())}${groupParam}`
         );
         if (!response.ok) {
           throw new Error('搜索失败');
