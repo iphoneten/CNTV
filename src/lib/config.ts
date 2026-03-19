@@ -47,6 +47,7 @@ export const API_CONFIG = {
 const API_SITE_CHECK_TIMEOUT_MS = 4000;
 const API_SITE_CHECK_TTL_MS = 5 * 60 * 1000;
 const API_SITE_CHECK_CONCURRENCY = 12;
+const API_SITE_CHECK_ENV_KEY = 'ENABLE_API_SITE_HEALTH_CHECK';
 
 const apiSiteHealthCache = new Map<
   string,
@@ -193,6 +194,15 @@ function buildApiSitesFingerprint(sites: ApiSite[]): string {
     .map((site) => `${site.key}|${site.api}|${site.name}|${site.detail || ''}`)
     .sort()
     .join('||');
+}
+
+function isApiSiteHealthCheckEnabled(): boolean {
+  const raw = (process.env[API_SITE_CHECK_ENV_KEY] || '')
+    .toString()
+    .trim()
+    .toLowerCase();
+
+  return ['true', '1', 'yes', 'on'].includes(raw);
 }
 
 // 在模块加载时根据环境决定配置来源
@@ -648,6 +658,12 @@ export async function getAvailableApiSites(): Promise<ApiSite[]> {
       detail: s.detail,
     })
   );
+
+  // 默认不做联通检测，仅在显式开启时启用
+  if (!isApiSiteHealthCheckEnabled()) {
+    return configuredSites;
+  }
+
   const fingerprint = buildApiSitesFingerprint(configuredSites);
 
   if (

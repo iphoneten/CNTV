@@ -64,6 +64,16 @@ function HomeClient() {
   const [loadingTabs, setLoadingTabs] = useState(!cachedState);
   const [loadingSection, setLoadingSection] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [expandGroupTabs, setExpandGroupTabs] = useState(false);
+  const [expandSiteTabs, setExpandSiteTabs] = useState(false);
+  const [groupTabsHasMore, setGroupTabsHasMore] = useState(false);
+  const [siteTabsHasMore, setSiteTabsHasMore] = useState(false);
+  const [groupTabsCollapsedHeight, setGroupTabsCollapsedHeight] = useState(44);
+  const [siteTabsCollapsedHeight, setSiteTabsCollapsedHeight] = useState(44);
+  const [groupTabsExpandedHeight, setGroupTabsExpandedHeight] = useState(44);
+  const [siteTabsExpandedHeight, setSiteTabsExpandedHeight] = useState(44);
+  const groupTabsRef = useRef<HTMLDivElement | null>(null);
+  const siteTabsRef = useRef<HTMLDivElement | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
   const loadMoreObserverRef = useRef<IntersectionObserver | null>(null);
   const { announcement } = useSite();
@@ -138,6 +148,7 @@ function HomeClient() {
       }
       return groupedSections[0]?.key || '';
     });
+    setExpandSiteTabs(false);
   }, [activeGroup, sections]);
 
   useEffect(() => {
@@ -225,6 +236,91 @@ function HomeClient() {
   const shouldShowSectionSkeleton =
     Boolean(activeSection) &&
     (loadingSection || !activeSectionState?.initialized);
+
+  useEffect(() => {
+    const measureContainer = (container: HTMLDivElement | null) => {
+      if (!container) {
+        return {
+          hasMore: false,
+          collapsedHeight: 44,
+          expandedHeight: 44,
+        };
+      }
+
+      const children = Array.from(container.children) as HTMLElement[];
+      if (children.length === 0) {
+        return {
+          hasMore: false,
+          collapsedHeight: 44,
+          expandedHeight: 44,
+        };
+      }
+
+      const containerRect = container.getBoundingClientRect();
+      const firstRect = children[0].getBoundingClientRect();
+      const firstTop = firstRect.top - containerRect.top;
+      let firstRowBottom = 0;
+      let secondRowTop = Number.POSITIVE_INFINITY;
+
+      children.forEach((child) => {
+        const childRect = child.getBoundingClientRect();
+        const top = childRect.top - containerRect.top;
+        const bottom = childRect.bottom - containerRect.top;
+        if (Math.abs(top - firstTop) <= 2) {
+          firstRowBottom = Math.max(firstRowBottom, bottom);
+        } else {
+          secondRowTop = Math.min(secondRowTop, top);
+        }
+      });
+
+      const hasMore = Number.isFinite(secondRowTop);
+      const collapsedHeight = hasMore
+        ? Math.max(1, Math.floor(secondRowTop - 1))
+        : Math.max(1, Math.ceil(firstRowBottom));
+
+      return {
+        hasMore,
+        collapsedHeight,
+        expandedHeight: Math.max(collapsedHeight, Math.ceil(container.scrollHeight)),
+      };
+    };
+
+    const check = () => {
+      const groupMeasure = measureContainer(groupTabsRef.current);
+      const siteMeasure = measureContainer(siteTabsRef.current);
+
+      setGroupTabsHasMore(groupMeasure.hasMore);
+      setSiteTabsHasMore(siteMeasure.hasMore);
+      setGroupTabsCollapsedHeight(groupMeasure.collapsedHeight);
+      setSiteTabsCollapsedHeight(siteMeasure.collapsedHeight);
+      setGroupTabsExpandedHeight(groupMeasure.expandedHeight);
+      setSiteTabsExpandedHeight(siteMeasure.expandedHeight);
+    };
+
+    check();
+
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => {
+        check();
+      });
+      if (groupTabsRef.current) {
+        observer.observe(groupTabsRef.current);
+      }
+      if (siteTabsRef.current) {
+        observer.observe(siteTabsRef.current);
+      }
+    }
+
+    window.addEventListener('resize', check);
+
+    return () => {
+      if (observer) {
+        observer.disconnect();
+      }
+      window.removeEventListener('resize', check);
+    };
+  }, [sections, activeGroup, expandGroupTabs, expandSiteTabs]);
 
   const loadMore = async () => {
     if (!activeSection || !activeSectionState?.hasMore || loadingMore) {
@@ -329,42 +425,86 @@ function HomeClient() {
           )}
           {sections.length > 0 && activeGroup && (
             <>
-              <div className='mb-6 flex flex-wrap gap-2'>
-                {groups.map((group) => {
-                  const isActive = group === activeGroup;
-                  return (
+              <div className='mb-6'>
+                <div
+                  ref={groupTabsRef}
+                  className='flex flex-wrap gap-2 overflow-hidden transition-[max-height] duration-200 ease-in-out'
+                  style={{
+                    maxHeight: `${
+                      expandGroupTabs
+                        ? groupTabsExpandedHeight
+                        : groupTabsCollapsedHeight
+                    }px`,
+                  }}
+                >
+                  {groups.map((group) => {
+                    const isActive = group === activeGroup;
+                    return (
+                      <button
+                        key={group}
+                        onClick={() => setActiveGroup(group)}
+                        className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                          isActive
+                            ? 'bg-gray-900 text-white shadow-sm dark:bg-gray-100 dark:text-gray-900'
+                            : 'bg-gray-200/80 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {group}
+                      </button>
+                    );
+                  })}
+                </div>
+                {groupTabsHasMore && (
+                  <div className='mt-2 flex justify-end'>
                     <button
-                      key={group}
-                      onClick={() => setActiveGroup(group)}
-                      className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                        isActive
-                          ? 'bg-gray-900 text-white shadow-sm dark:bg-gray-100 dark:text-gray-900'
-                          : 'bg-gray-200/80 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
-                      }`}
+                      onClick={() => setExpandGroupTabs((prev) => !prev)}
+                      className='text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                     >
-                      {group}
+                      {expandGroupTabs ? '收起' : '更多'}
                     </button>
-                  );
-                })}
+                  </div>
+                )}
               </div>
 
-              <div className='mb-6 flex flex-wrap gap-2'>
-                {groupedSections.map((section) => {
-                  const isActive = section.key === activeSection?.key;
-                  return (
+              <div className='mb-6'>
+                <div
+                  ref={siteTabsRef}
+                  className='flex flex-wrap gap-2 overflow-hidden transition-[max-height] duration-200 ease-in-out'
+                  style={{
+                    maxHeight: `${
+                      expandSiteTabs
+                        ? siteTabsExpandedHeight
+                        : siteTabsCollapsedHeight
+                    }px`,
+                  }}
+                >
+                  {groupedSections.map((section) => {
+                    const isActive = section.key === activeSection?.key;
+                    return (
+                      <button
+                        key={section.key}
+                        onClick={() => setActiveSectionKey(section.key)}
+                        className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                          isActive
+                            ? 'bg-green-600 text-white shadow-sm'
+                            : 'bg-gray-200/80 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {section.shortName}
+                      </button>
+                    );
+                  })}
+                </div>
+                {siteTabsHasMore && (
+                  <div className='mt-2 flex justify-end'>
                     <button
-                      key={section.key}
-                      onClick={() => setActiveSectionKey(section.key)}
-                      className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                        isActive
-                          ? 'bg-green-600 text-white shadow-sm'
-                          : 'bg-gray-200/80 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
-                      }`}
+                      onClick={() => setExpandSiteTabs((prev) => !prev)}
+                      className='text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                     >
-                      {section.shortName}
+                      {expandSiteTabs ? '收起' : '更多'}
                     </button>
-                  );
-                })}
+                  </div>
+                )}
               </div>
 
               <section className='mb-8'>
