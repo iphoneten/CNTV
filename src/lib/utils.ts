@@ -92,14 +92,19 @@ export function cleanHtmlTags(text: string): string {
 /**
  * 从m3u8地址获取视频质量等级和网络信息
  * @param m3u8Url m3u8播放列表的URL
+ * @param options timeoutMs: 测速超时时间（毫秒），默认 4000
  * @returns Promise<{quality: string, loadSpeed: string, pingTime: number}> 视频质量等级和网络信息
  */
-export async function getVideoResolutionFromM3u8(m3u8Url: string): Promise<{
+export async function getVideoResolutionFromM3u8(
+  m3u8Url: string,
+  options?: { timeoutMs?: number }
+): Promise<{
   quality: string; // 如720p、1080p等
   loadSpeed: string; // 自动转换为KB/s或MB/s
   pingTime: number; // 网络延迟（毫秒）
 }> {
   try {
+    const timeoutMs = options?.timeoutMs ?? 4000;
     // 直接使用m3u8 URL作为视频源，避免CORS问题
     return new Promise((resolve, reject) => {
       const video = document.createElement('video');
@@ -127,7 +132,7 @@ export async function getVideoResolutionFromM3u8(m3u8Url: string): Promise<{
         hls.destroy();
         video.remove();
         reject(new Error('Timeout loading video metadata'));
-      }, 4000);
+      }, timeoutMs);
 
       video.onerror = () => {
         clearTimeout(timeout);
