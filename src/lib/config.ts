@@ -44,6 +44,157 @@ export const API_CONFIG = {
   },
 };
 
+const API_SITE_CHECK_TIMEOUT_MS = 4000;
+const API_SITE_CHECK_TTL_MS = 5 * 60 * 1000;
+const API_SITE_CHECK_CONCURRENCY = 12;
+
+const apiSiteHealthCache = new Map<
+  string,
+  {
+    ok: boolean;
+    checkedAt: number;
+  }
+>();
+
+const apiSiteHealthInFlight = new Map<string, Promise<boolean>>();
+let availableApiSitesCache:
+  | {
+    fingerprint: string;
+    sites: ApiSite[];
+  }
+  | null = null;
+let availableApiSitesInFlight:
+  | {
+    fingerprint: string;
+    promise: Promise<ApiSite[]>;
+  }
+  | null = null;
+
+function buildApiProbeUrl(api: string): string {
+  const joiner = api.includes('?') ? '&' : '?';
+  return `${api}${joiner}ac=videolist&pg=1`;
+}
+
+async function probeApiSite(site: ApiSite): Promise<boolean> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    API_SITE_CHECK_TIMEOUT_MS
+  );
+
+  try {
+    const response = await fetch(buildApiProbeUrl(site.api), {
+      headers: API_CONFIG.search.headers,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const data = await response.json();
+
+    if (!data || typeof data !== 'object') {
+      return false;
+    }
+
+    // 常见苹果 CMS 返回结构：list/page/pagecount/class
+    if (Array.isArray((data as any).list)) {
+      return true;
+    }
+
+    if (
+      typeof (data as any).pagecount !== 'undefined' ||
+      Array.isArray((data as any).class)
+    ) {
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function getApiSiteHealth(site: ApiSite): Promise<boolean> {
+  const now = Date.now();
+  const cached = apiSiteHealthCache.get(site.key);
+
+  if (cached && now - cached.checkedAt < API_SITE_CHECK_TTL_MS) {
+    return cached.ok;
+  }
+
+  const inFlight = apiSiteHealthInFlight.get(site.key);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const checkPromise = probeApiSite(site)
+    .then((ok) => {
+      apiSiteHealthCache.set(site.key, {
+        ok,
+        checkedAt: Date.now(),
+      });
+      return ok;
+    })
+    .finally(() => {
+      apiSiteHealthInFlight.delete(site.key);
+    });
+
+  apiSiteHealthInFlight.set(site.key, checkPromise);
+  return checkPromise;
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let currentIndex = 0;
+
+  const worker = async () => {
+    while (currentIndex < items.length) {
+      const index = currentIndex;
+      currentIndex += 1;
+      results[index] = await mapper(items[index]);
+    }
+  };
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, Math.max(items.length, 1)) },
+    () => worker()
+  );
+
+  await Promise.all(workers);
+  return results;
+}
+
+async function filterReachableApiSites(sites: ApiSite[]): Promise<ApiSite[]> {
+  const checks = await mapWithConcurrency(
+    sites,
+    API_SITE_CHECK_CONCURRENCY,
+    async (site) => {
+      const ok = await getApiSiteHealth(site);
+      return {
+        site,
+        ok,
+      };
+    }
+  );
+
+  return checks.filter((item) => item.ok).map((item) => item.site);
+}
+
+function buildApiSitesFingerprint(sites: ApiSite[]): string {
+  return sites
+    .map((site) => `${site.key}|${site.api}|${site.name}|${site.detail || ''}`)
+    .sort()
+    .join('||');
+}
+
 // 在模块加载时根据环境决定配置来源
 let fileConfig: ConfigFileStruct;
 let cachedConfig: AdminConfig;
@@ -489,10 +640,51 @@ export async function getCacheTime(): Promise<number> {
 
 export async function getAvailableApiSites(): Promise<ApiSite[]> {
   const config = await getConfig();
-  return config.SourceConfig.filter((s) => !s.disabled).map((s) => ({
-    key: s.key,
-    name: s.name,
-    api: s.api,
-    detail: s.detail,
-  }));
+  const configuredSites = config.SourceConfig.filter((s) => !s.disabled).map(
+    (s) => ({
+      key: s.key,
+      name: s.name,
+      api: s.api,
+      detail: s.detail,
+    })
+  );
+  const fingerprint = buildApiSitesFingerprint(configuredSites);
+
+  if (
+    availableApiSitesCache &&
+    availableApiSitesCache.fingerprint === fingerprint
+  ) {
+    return availableApiSitesCache.sites;
+  }
+
+  if (
+    availableApiSitesInFlight &&
+    availableApiSitesInFlight.fingerprint === fingerprint
+  ) {
+    return availableApiSitesInFlight.promise;
+  }
+
+  const promise = filterReachableApiSites(configuredSites).then((sites) => {
+    availableApiSitesCache = {
+      fingerprint,
+      sites,
+    };
+    return sites;
+  });
+
+  availableApiSitesInFlight = {
+    fingerprint,
+    promise,
+  };
+
+  try {
+    return await promise;
+  } finally {
+    if (
+      availableApiSitesInFlight &&
+      availableApiSitesInFlight.fingerprint === fingerprint
+    ) {
+      availableApiSitesInFlight = null;
+    }
+  }
 }

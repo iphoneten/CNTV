@@ -302,7 +302,7 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
   );
 
   return (
-    <div className='md:ml-2 px-4 py-0 h-full rounded-xl bg-black/10 dark:bg-white/5 flex flex-col border border-white/0 dark:border-white/30 overflow-hidden'>
+    <div className='md:ml-2 px-4 py-0 h-full max-h-[420px] rounded-xl bg-black/10 dark:bg-white/5 flex flex-col border border-white/0 dark:border-white/30 overflow-hidden min-h-0'>
       {/* 主要的 Tab 切换 - 无缝融入设计 */}
       <div className='flex mb-1 -mx-6 flex-shrink-0'>
         {totalEpisodes > 1 && (
@@ -335,7 +335,7 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
 
       {/* 选集 Tab 内容 */}
       {activeTab === 'episodes' && (
-        <>
+        <div className='flex-1 min-h-0 flex flex-col'>
           {/* 分类标签 */}
           <div className='flex items-center gap-4 mb-4 border-b border-gray-300 dark:border-gray-700 -mx-6 px-6 flex-shrink-0'>
             <div className='flex-1 overflow-x-auto' ref={categoryContainerRef}>
@@ -391,7 +391,7 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
           </div>
 
           {/* 集数网格 */}
-          <div className='grid grid-cols-[repeat(auto-fill,minmax(40px,1fr))] auto-rows-[40px] gap-x-3 gap-y-3 overflow-y-auto h-full pb-4'>
+          <div className='grid grid-cols-[repeat(auto-fill,minmax(40px,1fr))] auto-rows-[40px] gap-x-3 gap-y-3 overflow-y-auto flex-1 min-h-0 pb-4'>
             {(() => {
               const len = currentEnd - currentStart + 1;
               const episodes = Array.from({ length: len }, (_, i) =>
@@ -416,12 +416,12 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
               );
             })}
           </div>
-        </>
+        </div>
       )}
 
       {/* 换源 Tab 内容 */}
       {activeTab === 'sources' && (
-        <div className='flex flex-col h-full mt-4'>
+        <div className='flex-1 min-h-0 flex flex-col mt-4'>
           {sourceSearchLoading && (
             <div className='flex items-center justify-center py-8'>
               <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-green-500'></div>
@@ -458,7 +458,7 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
           {!sourceSearchLoading &&
             !sourceSearchError &&
             availableSources.length > 0 && (
-              <div className='flex-1 overflow-y-auto space-y-2 pb-20'>
+              <div className='flex-1 min-h-0 overflow-y-auto space-y-2 pb-4'>
                 {availableSources
                   .sort((a, b) => {
                     const aIsCurrent =

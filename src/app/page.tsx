@@ -2,7 +2,7 @@
 
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 
 import { SearchResult } from '@/lib/types';
 
@@ -24,16 +24,48 @@ type SectionState = {
   initialized: boolean;
 };
 
+const HOME_CACHE_TTL_MS = 30 * 60 * 1000;
+
+let homePageCache:
+  | {
+    sections: HomeSection[];
+    sectionStates: Record<string, SectionState>;
+    activeGroup: string;
+    activeSectionKey: string;
+    cachedAt: number;
+  }
+  | null = null;
+
+function getValidHomePageCache() {
+  if (!homePageCache) {
+    return null;
+  }
+
+  if (Date.now() - homePageCache.cachedAt > HOME_CACHE_TTL_MS) {
+    homePageCache = null;
+    return null;
+  }
+
+  return homePageCache;
+}
+
 function HomeClient() {
-  const [sections, setSections] = useState<HomeSection[]>([]);
+  const cachedState = getValidHomePageCache();
+  const [sections, setSections] = useState<HomeSection[]>(
+    cachedState?.sections || []
+  );
   const [sectionStates, setSectionStates] = useState<
     Record<string, SectionState>
-  >({});
-  const [activeGroup, setActiveGroup] = useState('');
-  const [activeSectionKey, setActiveSectionKey] = useState('');
-  const [loadingTabs, setLoadingTabs] = useState(true);
+  >(cachedState?.sectionStates || {});
+  const [activeGroup, setActiveGroup] = useState(cachedState?.activeGroup || '');
+  const [activeSectionKey, setActiveSectionKey] = useState(
+    cachedState?.activeSectionKey || ''
+  );
+  const [loadingTabs, setLoadingTabs] = useState(!cachedState);
   const [loadingSection, setLoadingSection] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreObserverRef = useRef<IntersectionObserver | null>(null);
   const { announcement } = useSite();
 
   const [showAnnouncement, setShowAnnouncement] = useState(false);
@@ -50,6 +82,10 @@ function HomeClient() {
   }, [announcement]);
 
   useEffect(() => {
+    if (cachedState) {
+      return;
+    }
+
     const fetchHomeSections = async () => {
       try {
         setLoadingTabs(true);
@@ -77,13 +113,14 @@ function HomeClient() {
         setSections([]);
         setActiveGroup('');
         setActiveSectionKey('');
+        homePageCache = null;
       } finally {
         setLoadingTabs(false);
       }
     };
 
     fetchHomeSections();
-  }, []);
+  }, [cachedState]);
 
   useEffect(() => {
     if (!activeGroup) {
@@ -156,6 +193,20 @@ function HomeClient() {
     fetchSection();
   }, [activeSectionKey, sectionStates]);
 
+  useEffect(() => {
+    if (!sections.length) {
+      return;
+    }
+
+    homePageCache = {
+      sections,
+      sectionStates,
+      activeGroup,
+      activeSectionKey,
+      cachedAt: Date.now(),
+    };
+  }, [sections, sectionStates, activeGroup, activeSectionKey]);
+
   const handleCloseAnnouncement = (value: string) => {
     setShowAnnouncement(false);
     localStorage.setItem('hasSeenAnnouncement', value);
@@ -212,10 +263,63 @@ function HomeClient() {
     }
   };
 
+  useEffect(() => {
+    if (!activeSection || !activeSectionState?.hasMore || loadingMore) {
+      if (loadMoreObserverRef.current) {
+        loadMoreObserverRef.current.disconnect();
+        loadMoreObserverRef.current = null;
+      }
+      return;
+    }
+
+    const target = loadMoreTriggerRef.current;
+    if (!target) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMore();
+        }
+      },
+      {
+        root: null,
+        rootMargin: '280px 0px',
+        threshold: 0.01,
+      }
+    );
+
+    observer.observe(target);
+    loadMoreObserverRef.current = observer;
+
+    return () => {
+      observer.disconnect();
+      if (loadMoreObserverRef.current === observer) {
+        loadMoreObserverRef.current = null;
+      }
+    };
+  }, [
+    activeSection?.key,
+    activeSectionState?.hasMore,
+    activeSectionState?.page,
+    loadingMore,
+  ]);
+
   return (
     <PageLayout>
       <div className='px-2 sm:px-10 pb-4 sm:pb-8 pt-[calc(3rem+env(safe-area-inset-top)+0.75rem)] sm:pt-8 overflow-visible'>
         <div className='max-w-[95%] mx-auto'>
+          {loadingTabs && sections.length === 0 && (
+            <section className='mb-8'>
+              <div className='rounded-lg border border-gray-200/70 px-4 py-10 text-center dark:border-gray-700/70'>
+                <div className='mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-green-500 dark:border-gray-600 dark:border-t-green-400'></div>
+                <p className='text-sm text-gray-600 dark:text-gray-300'>
+                  正在校验 api site 连通性...
+                </p>
+              </div>
+            </section>
+          )}
           {sections.length === 0 && !loadingTabs && (
             <section className='mb-8'>
               <div className='rounded-lg border border-dashed border-gray-300 px-4 py-6 text-center text-gray-500 dark:border-gray-700 dark:text-gray-400'>
@@ -302,15 +406,14 @@ function HomeClient() {
                       ))}
                     </div>
 
-                    <div className='mt-8 flex justify-center'>
+                    <div
+                      ref={loadMoreTriggerRef}
+                      className='mt-8 min-h-10 flex items-center justify-center'
+                    >
                       {activeSectionState.hasMore ? (
-                        <button
-                          onClick={loadMore}
-                          disabled={loadingMore}
-                          className='rounded-full bg-green-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60'
-                        >
-                          {loadingMore ? '加载中...' : '加载更多'}
-                        </button>
+                        <div className='text-sm text-gray-500 dark:text-gray-400'>
+                          {loadingMore ? '加载中...' : '继续下拉自动加载'}
+                        </div>
                       ) : (
                         <div className='text-sm text-gray-500 dark:text-gray-400'>
                           没有更多内容了
