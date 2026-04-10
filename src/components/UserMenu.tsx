@@ -38,10 +38,6 @@ export const UserMenu: React.FC = () => {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordError, setPasswordError] = useState('');
 
-  // 版本检查相关状态
-  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
-  const [isChecking, setIsChecking] = useState(true);
-
   // 确保组件已挂载
   useEffect(() => {
     setMounted(true);
@@ -109,21 +105,6 @@ export const UserMenu: React.FC = () => {
     }
   }, []);
 
-  // 版本检查
-  useEffect(() => {
-    const checkUpdate = async () => {
-      try {
-        // const status = await checkForUpdates();
-        // setUpdateStatus(status);
-      } catch (error) {
-        console.warn('版本检查失败:', error);
-      } finally {
-        setIsChecking(false);
-      }
-    };
-
-    checkUpdate();
-  }, []);
 
   const handleMenuClick = () => {
     setIsOpen(!isOpen);
@@ -726,9 +707,6 @@ export const UserMenu: React.FC = () => {
         >
           <User className='w-full h-full' />
         </button>
-        {updateStatus === UpdateStatus.HAS_UPDATE && (
-          <div className='absolute top-[2px] right-[2px] w-2 h-2 bg-yellow-500 rounded-full'></div>
-        )}
       </div>
 
       {/* 使用 Portal 将菜单面板渲染到 document.body */}
