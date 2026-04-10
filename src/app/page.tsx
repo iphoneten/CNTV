@@ -11,5 +11,5 @@ export default async function HomePage() {
     return <HomeLegacyClient />;
   }
 
-  return <ResourceHomeContent activePath='/resources' />;
+  return await ResourceHomeContent({ activePath: '/resources' });
 }
