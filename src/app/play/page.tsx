@@ -197,6 +197,7 @@ function PlayPageClient() {
 
   const artPlayerRef = useRef<any>(null);
   const artRef = useRef<HTMLDivElement | null>(null);
+  const isLockedRef = useRef(false);
 
   // 播放源优选策略：限制参与优选的数量与并发，避免源过多导致首播等待过久
   const MAX_PREFER_CANDIDATES = 5;
@@ -460,6 +461,157 @@ function PlayPageClient() {
     // 如果曾经有禁用属性，移除之
     if (video.hasAttribute('disableRemotePlayback')) {
       video.removeAttribute('disableRemotePlayback');
+    }
+  };
+
+  const isPlayerFullscreen = () => {
+    const player = artPlayerRef.current;
+    return !!(player && (player.fullscreen || player.fullscreenWeb));
+  };
+
+  const syncFullscreenOrientation = async (forceUnlock = false) => {
+    if (typeof window === 'undefined') return;
+
+    const isTvMode = (() => {
+      if (document.documentElement.dataset.tv === 'true') return true;
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const tvParam = params.get('tv');
+        if (tvParam === '1') return true;
+        if (tvParam === '0') return false;
+
+        const stored = window.localStorage?.getItem('tvMode');
+        if (stored === '1') return true;
+        if (stored === '0') return false;
+
+        const ua = window.navigator.userAgent || '';
+        return /Android TV|AFT|BRAVIA|GoogleTV|SMART-TV|SmartTV|SMARTTV|Tizen|WebOS/i.test(
+          ua
+        );
+      } catch {
+        return false;
+      }
+    })();
+
+    // TV 模式不做方向锁定
+    if (isTvMode) return;
+
+    const nativeBridge = (window as Window & {
+      TXTVNative?: {
+        setFullscreenOrientation?: (orientation: string) => void;
+      };
+    }).TXTVNative;
+
+    const orientation = (window.screen as Screen & {
+      orientation?: {
+        lock?: (orientation: 'portrait' | 'landscape') => Promise<void>;
+        unlock?: () => void | Promise<void>;
+      };
+    }).orientation;
+
+    if (!orientation) return;
+
+    if (forceUnlock || !isPlayerFullscreen()) {
+      try {
+        nativeBridge?.setFullscreenOrientation?.('unlock');
+      } catch {
+        // ignore
+      }
+      try {
+        await orientation.unlock?.();
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    const video = artPlayerRef.current?.video as HTMLVideoElement | undefined;
+    if (!video || video.videoWidth <= 0 || video.videoHeight <= 0) return;
+
+    const nextOrientation =
+      video.videoWidth > video.videoHeight ? 'landscape' : 'portrait';
+
+    try {
+      nativeBridge?.setFullscreenOrientation?.(nextOrientation);
+    } catch {
+      // ignore
+    }
+
+    try {
+      await orientation.lock?.(nextOrientation);
+    } catch {
+      // ignore
+    }
+  };
+
+  const titleLayer = (show: boolean) => {
+    const titleLayerText =
+      videoTitleRef.current +
+      (totalEpisodes > 1 ? ` - 第${currentEpisodeIndexRef.current + 1}集` : '');
+    return {
+      name: 'titleLayer',
+      html: `<div class="artplayer-title"><span class="artplayer-title-content">${titleLayerText}</span></div>`,
+      style: {
+        position: 'absolute',
+        top: '10px',
+        left: '15px',
+        color: '#fff',
+        fontSize: '14px',
+        textShadow: '0px 1px 2px rgba(0,0,0,0.5)',
+        pointerEvents: 'none',
+        opacity: show ? '1' : '0',
+        transition: 'opacity 0.5s ease',
+      },
+    };
+  };
+
+  const updateTitleLayer = (show: boolean) => {
+    if (!artPlayerRef.current) return;
+
+    const isFullscreen =
+      artPlayerRef.current.fullscreen || artPlayerRef.current.fullscreenWeb;
+    const titleText =
+      videoTitleRef.current +
+      (totalEpisodes > 1 ? ` - 第${currentEpisodeIndexRef.current + 1}集` : '');
+
+    if (isFullscreen && !isLockedRef.current) {
+      artPlayerRef.current.layers.update({
+        name: 'titleLayer',
+        html: `
+          <div class="artplayer-title flex items-center gap-2" style="width:100%; padding:0 10px;">
+            <button class="exit-fullscreen-btn" style="color:white; font-size:14px;">←</button>
+            <span class="artplayer-title-content">${titleText}</span>
+          </div>
+        `,
+        style: {
+          position: 'absolute',
+          top: '10px',
+          left: '0',
+          right: '0',
+          color: '#fff',
+          fontSize: '14px',
+          textShadow: '0px 1px 2px rgba(0,0,0,0.5)',
+          pointerEvents: 'auto',
+          display: 'flex',
+          alignItems: 'center',
+          opacity: show ? '1' : '0',
+          transition: 'opacity 0.3s ease',
+        },
+        mounted: (el: HTMLElement) => {
+          const backBtn = el.querySelector('.exit-fullscreen-btn') as
+            | HTMLElement
+            | null;
+          if (backBtn) {
+            backBtn.onclick = () => {
+              if (!artPlayerRef.current) return;
+              artPlayerRef.current.fullscreen = false;
+              artPlayerRef.current.fullscreenWeb = false;
+            };
+          }
+        },
+      });
+    } else {
+      artPlayerRef.current.layers.update(titleLayer(show));
     }
   };
 
@@ -1090,6 +1242,7 @@ function PlayPageClient() {
 
     // 左箭头 = 快退
     if (!e.altKey && e.key === 'ArrowLeft') {
+      if (!isPlayerFullscreen()) return;
       if (artPlayerRef.current && artPlayerRef.current.currentTime > 5) {
         artPlayerRef.current.currentTime -= 10;
         e.preventDefault();
@@ -1098,6 +1251,7 @@ function PlayPageClient() {
 
     // 右箭头 = 快进
     if (!e.altKey && e.key === 'ArrowRight') {
+      if (!isPlayerFullscreen()) return;
       if (
         artPlayerRef.current &&
         artPlayerRef.current.currentTime < artPlayerRef.current.duration - 5
@@ -1135,6 +1289,58 @@ function PlayPageClient() {
     if (e.key === ' ') {
       if (artPlayerRef.current) {
         artPlayerRef.current.toggle();
+        e.preventDefault();
+      }
+    }
+
+    const isEnterPress =
+      e.key === 'Enter' ||
+      e.code === 'Enter' ||
+      e.keyCode === 13 ||
+      e.keyCode === 23 ||
+      e.keyCode === 66;
+    const isBackPress =
+      e.key === 'Backspace' ||
+      e.key === 'BrowserBack' ||
+      e.key === 'GoBack' ||
+      e.key === 'Back' ||
+      e.code === 'BrowserBack' ||
+      e.keyCode === 8 ||
+      e.keyCode === 166 ||
+      e.keyCode === 461 ||
+      e.keyCode === 10009;
+
+    // Enter = 进入全屏（仅进，不切换）
+    if (isEnterPress) {
+      const player = artPlayerRef.current;
+      if (player) {
+        if (!(player.fullscreen || player.fullscreenWeb)) {
+          player.fullscreenWeb = true;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }
+
+    // Back = 全屏内优先退出全屏，再次按返回上一页
+    if (isBackPress) {
+      const player = artPlayerRef.current;
+      if (player && (player.fullscreen || player.fullscreenWeb)) {
+        player.fullscreen = false;
+        player.fullscreenWeb = false;
+      } else {
+        window.history.back();
+      }
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    // Escape = 退出全屏
+    if (e.key === 'Escape') {
+      const player = artPlayerRef.current;
+      if (player && (player.fullscreen || player.fullscreenWeb)) {
+        player.fullscreen = false;
+        player.fullscreenWeb = false;
         e.preventDefault();
       }
     }
@@ -1528,6 +1734,7 @@ function PlayPageClient() {
             },
           },
         ],
+        layers: [titleLayer(true)],
       });
 
       // ------------------- 播放器高度自适应(竖屏短剧)逻辑 begin -------------------
@@ -1579,7 +1786,27 @@ function PlayPageClient() {
 
       // 监听播放器事件
       artPlayerRef.current.on('ready', () => {
+        updateTitleLayer(true);
+        void syncFullscreenOrientation();
         setError(null);
+      });
+      artPlayerRef.current.on('control', (state: boolean) => {
+        updateTitleLayer(state);
+      });
+      artPlayerRef.current.on('fullscreen', () => {
+        updateTitleLayer(true);
+        void syncFullscreenOrientation();
+      });
+      artPlayerRef.current.on('fullscreenWeb', () => {
+        updateTitleLayer(true);
+        void syncFullscreenOrientation();
+      });
+      artPlayerRef.current.on('video:loadedmetadata', () => {
+        void syncFullscreenOrientation();
+      });
+      artPlayerRef.current.on('lock', (state: boolean) => {
+        isLockedRef.current = state;
+        updateTitleLayer(true);
       });
       artPlayerRef.current.on('video:volumechange', () => {
         lastVolumeRef.current = artPlayerRef.current.volume;
@@ -1751,6 +1978,7 @@ function PlayPageClient() {
         }
       }, 0);
       setIsVideoLoading(false);
+      void syncFullscreenOrientation();
     }
   }, [Artplayer, Hls, videoUrl, loading, blockAdEnabled]);
 
@@ -1760,6 +1988,7 @@ function PlayPageClient() {
       if (saveIntervalRef.current) {
         clearInterval(saveIntervalRef.current);
       }
+      void syncFullscreenOrientation(true);
     };
   }, []);
 
