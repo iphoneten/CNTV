@@ -12,11 +12,12 @@ interface PageLayoutProps {
 }
 
 const PageLayout = ({ children, activePath = '/' }: PageLayoutProps) => {
-  const isHideBottomNav = ['/play', '/admin'].includes(activePath);
+  const routeItems = ['/play', '/admin', '/resources/detail'];
+  const isHideBottomNav = routeItems.includes(activePath);
   return (
     <div className='w-full min-h-screen'>
       {/* 移动端头部 */}
-      <MobileHeader showBackButton={['/play', '/admin'].includes(activePath)} />
+      <MobileHeader showBackButton={routeItems.includes(activePath)} />
 
       {/* 主要布局容器 */}
       <div className='flex md:grid md:grid-cols-[auto_1fr] w-full min-h-screen md:min-h-auto'>

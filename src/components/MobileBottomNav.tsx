@@ -1,6 +1,6 @@
 'use client';
 
-import { Heart, History, Home, Search } from 'lucide-react';
+import { Database, Heart, History, Search } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -18,7 +18,7 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
   const currentActive = activePath ?? pathname;
 
   const navItems = [
-    { icon: Home, label: '首页', href: '/' },
+    { icon: Database, label: '资源', href: '/resources' },
     { icon: Search, label: '搜索', href: '/search' },
     {
       icon: History,
