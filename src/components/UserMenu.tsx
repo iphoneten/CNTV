@@ -8,7 +8,6 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { getAuthInfoFromBrowserCookie } from '@/lib/auth';
-import { UpdateStatus } from '@/lib/version';
 
 interface AuthInfo {
   username?: string;

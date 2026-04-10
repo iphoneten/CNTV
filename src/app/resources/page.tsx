@@ -2,6 +2,6 @@ import ResourceHomeContent from '@/components/ResourceHomeContent';
 
 export const dynamic = 'force-dynamic';
 
-export default function ResourcesPage() {
-  return <ResourceHomeContent activePath='/resources' />;
+export default async function ResourcesPage() {
+  return await ResourceHomeContent({ activePath: '/resources' });
 }
